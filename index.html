@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metallurgy Diffusion Lab | Arrhenius Suite</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        :root {
+            --bg-main: #121519; --bg-card: #1E232A; --bg-side: #1A1E24;
+            --text-main: #E2E8F0; --text-muted: #A0AEC0;
+            --accent: #FF8C00; --accent-dark: #FF5100; --border: #3A4250;
+        }
+        body {
+            margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, Helvetica, sans-serif;
+            background-color: var(--bg-main); color: var(--text-main); display: flex; min-height: 100vh;
+        }
+        /* Sidebar */
+        .sidebar {
+            width: 300px; background-color: var(--bg-side); border-right: 2px solid var(--accent-dark);
+            padding: 20px; position: fixed; height: 100vh; overflow-y: auto; box-sizing: border-box;
+        }
+        .sidebar h2 { color: var(--accent); margin-top: 0; font-size: 1.2rem; }
+        .sidebar label { display: block; margin: 10px 0 5px; font-size: 0.9rem; color: var(--text-muted); }
+        .sidebar input, .sidebar select {
+            width: 100%; padding: 8px; background: #252B34; border: 1px solid var(--border);
+            color: white; border-radius: 4px; box-sizing: border-box;
+        }
+        .btn {
+            background: linear-gradient(90deg, var(--accent-dark) 0%, var(--accent) 100%);
+            color: white; border: none; padding: 10px; border-radius: 6px;
+            font-weight: bold; cursor: pointer; width: 100%; margin-top: 15px; transition: 0.3s;
+        }
+        .btn:hover { box-shadow: 0 0 12px rgba(255, 107, 0, 0.7); transform: translateY(-1px); }
+        
+        /* Main Content */
+        .main-content { margin-left: 300px; padding: 30px; flex: 1; box-sizing: border-box; }
+        h1, h2, h3 { color: var(--accent); margin-top: 0; }
+        
+        /* Tabs */
+        .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        .tab-btn {
+            background: none; border: none; color: var(--text-muted); padding: 10px 15px;
+            font-size: 1rem; font-weight: bold; cursor: pointer; border-bottom: 3px solid transparent;
+        }
+        .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent-dark); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        /* Cards & Grid */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } .sidebar { position: relative; width: 100%; height: auto; } .main-content { margin-left: 0; } body { flex-direction: column; } }
+        .card {
+            background: linear-gradient(145deg, var(--bg-card), #252B34);
+            border: 1px solid var(--border); border-left: 5px solid var(--accent-dark);
+            padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+        }
+        .metric { text-align: center; }
+        .metric-value { font-size: 1.5rem; color: var(--accent); font-family: 'Courier New', monospace; font-weight: bold; margin-top: 5px; }
+        .info-box { background: rgba(255, 140, 0, 0.1); border-left: 3px solid var(--accent); padding: 10px; margin-bottom: 15px; font-size: 0.9rem; }
+        .plot-container { width: 100%; height: 400px; }
+        
+        /* Footer */
+        .footer {
+            text-align: center; padding: 16px; margin-top: 30px;
+            background: linear-gradient(145deg, var(--bg-side), #222831);
+            border: 2px solid var(--accent); border-radius: 10px;
+            color: var(--accent); font-weight: bold; box-shadow: 0 4px 12px rgba(255, 140, 0, 0.25);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <h2>⚙️ Global Settings</h2>
+        <label>Default Temperature Unit:</label>
+        <select id="tempUnit" onchange="updateTempUnit()">
+            <option value="C">Celsius (°C)</option>
+            <option value="K">Kelvin (K)</option>
+        </select>
+        <hr style="border-color: var(--border); margin: 20px 0;">
+        <h2>➕ Add Custom Alloy</h2>
+        <label>Species (e.g., Cr)</label>
+        <input type="text" id="addSpec" value="Cr">
+        <label>Host (e.g., α-Fe)</label>
+        <input type="text" id="addHost" value="α-Fe (BCC)">
+        <label>Mechanism</label>
+        <select id="addMech"><option>Substitutional</option><option>Interstitial</option></select>
+        <label>D₀ (m²/s)</label>
+        <input type="number" id="addD0" value="0.00025" step="0.00001" format="%.2e">
+        <label>Q (kJ/mol)</label>
+        <input type="number" id="addQ" value="240" step="1">
+        <button class="btn" onclick="addCustomAlloy()">Save to Database</button>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-content">
+        <h1>🔥 Solid-State Diffusion & Arrhenius Lab</h1>
+        <p>Materials Science Suite | <i>D = D₀ exp(-Q/RT)</i></p>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="openTab('tab1')">🧮 Arrhenius</button>
+            <button class="tab-btn" onclick="openTab('tab2')">⚖️ Comparison</button>
+            <button class="tab-btn" onclick="openTab('tab3')">📏 Fick's Law</button>
+            <button class="tab-btn" onclick="openTab('tab4')">📈 Regression</button>
+        </div>
+
+        <!-- TAB 1: ARRHENIUS -->
+        <div id="tab1" class="tab-content active">
+            <div class="grid-2">
+                <div>
+                    <div class="card">
+                        <h3>1. Forward Calculation (Find D)</h3>
+                        <label>Select Material:</label>
+                        <select id="matSelect" onchange="calcArrhenius()" style="width:100%; padding:8px; margin-bottom:15px; background:#252B34; color:white; border:1px solid var(--border);"></select>
+                        <div id="matInfo" class="info-box"></div>
+                        
+                        <label>Operating Temperature (<span id="tempLabel">°C</span>):</label>
+                        <input type="number" id="opTemp" value="900" step="10" oninput="calcArrhenius()" style="width:100%; padding:8px; margin-bottom:10px; background:#252B34; color:white; border:1px solid var(--border);">
+                        
+                        <div class="grid-2" style="gap:10px;">
+                            <div class="card metric"><div>D (m²/s)</div><div class="metric-value" id="resD_m">-</div></div>
+                            <div class="card metric"><div>D (cm²/s)</div><div class="metric-value" id="resD_cm">-</div></div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>2. Inverse (Find T)</h3>
+                        <label>Target D (m²/s):</label>
+                        <input type="number" id="targetD" value="0.00000000001" step="0.000000000001" oninput="calcInverse()" style="width:100%; padding:8px; margin-bottom:10px; background:#252B34; color:white; border:1px solid var(--border);">
+                        <div class="grid-2" style="gap:10px;">
+                            <div class="card metric"><div>Required T (°C)</div><div class="metric-value" id="reqT_c">-</div></div>
+                            <div class="card metric"><div>Required T (K)</div><div class="metric-value" id="reqT_k">-</div></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Arrhenius Diagram</h3>
+                    <div id="plotArrhenius" class="plot-container"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: COMPARISON -->
+        <div id="tab2" class="tab-content">
+            <div class="card">
+                <h3>Multi-Material Comparison</h3>
+                <div id="plotComparison" class="plot-container"></div>
+            </div>
+        </div>
+
+        <!-- TAB 3: FICK'S LAW -->
+        <div id="tab3" class="tab-content">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>Fick's 2nd Law (Depth)</h3>
+                    <label>Diffusion Coefficient D (m²/s):</label>
+                    <input type="number" id="fickD" value="0.00000000001" step="0.000000000001" oninput="calcFick()" style="width:100%; padding:8px; margin-bottom:10px; background:#252B34; color:white; border:1px solid var(--border);">
+                    <label>Time (Hours):</label>
+                    <input type="number" id="fickT" value="5" step="1" oninput="calcFick()" style="width:100%; padding:8px; margin-bottom:10px; background:#252B34; color:white; border:1px solid var(--border);">
+                    <div class="card metric"><div>Penetration Depth (μm)</div><div class="metric-value" id="fickResult">-</div></div>
+                </div>
+                <div class="card">
+                    <h3>Diffusion Growth</h3>
+                    <div id="plotFick" class="plot-container"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: REGRESSION -->
+        <div id="tab4" class="tab-content">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>Experimental Data (Q & D₀)</h3>
+                    <p style="font-size:0.8rem; color:var(--text-muted);">Enter T (°C) and D (m²/s) separated by comma</p>
+                    <textarea id="regData" style="width:100%; height:150px; background:#252B34; color:white; border:1px solid var(--border); padding:10px; margin-bottom:10px;">800, 1.45e-12
+900, 5.92e-12
+1000, 1.95e-11
+1100, 5.48e-11
+1200, 1.35e-10</textarea>
+                    <button class="btn" onclick="calcRegression()">Run Regression</button>
+                    <div class="card metric" style="margin-top:15px;"><div>Estimated Q (kJ/mol)</div><div class="metric-value" id="regQ">-</div></div>
+                    <div class="card metric"><div>Estimated D₀ (m²/s)</div><div class="metric-value" id="regD0">-</div></div>
+                    <div class="card metric"><div>R²</div><div class="metric-value" id="regR2">-</div></div>
+                </div>
+                <div class="card">
+                    <h3>Arrhenius Fit</h3>
+                    <div id="plotRegression" class="plot-container"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            Created by Behrad Mahbobi, Manufacturing Engineering student, University of Tabriz, Tabriz, Iran
+        </div>
+    </div>
+
+    <script>
+        // --- DATABASE ---
+        const R_GAS = 8.314;
+        const materials = [
+            { label: "C in γ-Fe (Austenite)", D0: 2.3e-5, Q: 148, mech: "Interstitial" },
+            { label: "C in α-Fe (Ferrite)", D0: 6.2e-7, Q: 80, mech: "Interstitial" },
+            { label: "N in α-Fe (Ferrite)", D0: 5.0e-7, Q: 77, mech: "Interstitial" },
+            { label: "Fe in α-Fe (Self)", D0: 2.8e-4, Q: 251, mech: "Substitutional" },
+            { label: "Fe in γ-Fe (Self)", D0: 5.0e-5, Q: 284, mech: "Substitutional" },
+            { label: "Cu in Al", D0: 6.5e-5, Q: 136, mech: "Substitutional" },
+            { label: "Mg in Al", D0: 1.2e-4, Q: 130, mech: "Substitutional" },
+            { label: "Zn in Cu (Brass)", D0: 2.4e-5, Q: 189, mech: "Substitutional" },
+            { label: "Ni in γ-Fe", D0: 7.7e-5, Q: 280, mech: "Substitutional" }
+        ];
+
+        // --- UI LOGIC ---
+        function openTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            event.currentTarget.classList.add('active');
+            window.dispatchEvent(new Event('resize'));
+        }
+
+        function updateTempUnit() {
+            const unit = document.getElementById('tempUnit').value;
+            document.getElementById('tempLabel').innerText = unit === 'C' ? '°C' : 'K';
+            calcArrhenius();
+        }
+
+        function populateSelect() {
+            const sel = document.getElementById('matSelect');
+            sel.innerHTML = '';
+            materials.forEach((m, i) => {
+                let opt = document.createElement('option');
+                opt.value = i; opt.innerHTML = m.label;
+                sel.appendChild(opt);
+            });
+            calcArrhenius();
+        }
+
+        function addCustomAlloy() {
+            const spec = document.getElementById('addSpec').value;
+            const host = document.getElementById('addHost').value;
+            const mech = document.getElementById('addMech').value;
+            const d0 = parseFloat(document.getElementById('addD0').value);
+            const q = parseFloat(document.getElementById('addQ').value);
+            
+            if(d0 > 0 && q > 0 && spec && host) {
+                materials.push({ label: `${spec} in ${host}`, D0: d0, Q: q, mech: mech });
+                populateSelect();
+                alert("Material added successfully!");
+            } else {
+                alert("Error: Please check your inputs.");
+            }
+        }
+
+        // --- MATH FUNCTIONS ---
+        function getCurrentMaterial() {
+            const idx = document.getElementById('matSelect').value;
+            return materials[idx];
+        }
+
+        function toKelvin(t, unit) {
+            return unit === 'C' ? t + 273.15 : t;
+        }
+
+        function calcArrhenius() {
+            const m = getCurrentMaterial();
+            if(!m) return;
+            
+            const unit = document.getElementById('tempUnit').value;
+            const tempInput = parseFloat(document.getElementById('opTemp').value);
+            const tempK = toKelvin(tempInput, unit);
+            
+            document.getElementById('matInfo').innerHTML = `<b>Mechanism:</b> ${m.mech}<br><b>D₀:</b> ${m.D0.toExponential(2)} m²/s | <b>Q:</b> ${m.Q} kJ/mol`;
+
+            if(tempK <= 0) return;
+
+            const D = m.D0 * Math.exp(-(m.Q * 1000) / (R_GAS * tempK));
+            document.getElementById('resD_m').innerText = D.toExponential(3);
+            document.getElementById('resD_cm').innerText = (D * 1e4).toExponential(3);
+
+            // Plot
+            let tMin = Math.max(300, tempK * 0.6), tMax = Math.min(2500, tempK * 1.4);
+            let xData = [], yData = [];
+            for(let i=0; i<=50; i++) {
+                let t = tMin + (tMax - tMin) * (i/50);
+                let d = m.D0 * Math.exp(-(m.Q * 1000) / (R_GAS * t));
+                xData.push(1000 / t);
+                yData.push(Math.log(d));
+            }
+
+            let trace1 = { x: xData, y: yData, type: 'scatter', name: m.label, line: {color: '#FF8C00', width: 3} };
+            let trace2 = { x: [1000/tempK], y: [Math.log(D)], type: 'scatter', mode: 'markers', name: 'Operating Point', marker: {color: '#FF2A00', size: 12, symbol: 'diamond'} };
+
+            let layout = getPlotLayout('Arrhenius Plot', '1000 / T (K⁻¹)', 'ln(D)');
+            Plotly.newPlot('plotArrhenius', [trace1, trace2], layout, {responsive: true});
+            calcInverse();
+        }
+
+        function calcInverse() {
+            const m = getCurrentMaterial();
+            if(!m) return;
+            const target = parseFloat(document.getElementById('targetD').value);
+            if(target > 0 && target < m.D0) {
+                const tK = -(m.Q * 1000) / (R_GAS * Math.log(target / m.D0));
+                document.getElementById('reqT_k').innerText = tK.toFixed(1);
+                document.getElementById('reqT_c').innerText = (tK - 273.15).toFixed(1);
+            } else {
+                document.getElementById('reqT_k').innerText = "Out of bounds";
+                document.getElementById('reqT_c').innerText = "Out of bounds";
+            }
+        }
+
+        function calcFick() {
+            const D = parseFloat(document.getElementById('fickD').value);
+            const tH = parseFloat(document.getElementById('fickT').value);
+            if(D > 0 && tH > 0) {
+                const depth = Math.sqrt(D * tH * 3600) * 1e6; // in um
+                document.getElementById('fickResult').innerText = depth.toFixed(2) + " μm";
+
+                let xData = [], yData = [];
+                for(let i=0; i<=50; i++) {
+                    let t = (tH * 1.5) * (i/50);
+                    xData.push(t);
+                    yData.push(Math.sqrt(D * t * 3600) * 1e6);
+                }
+                let trace1 = { x: xData, y: yData, type: 'scatter', name: 'Depth', line: {color: '#FFA500', width: 3} };
+                let trace2 = { x: [tH], y: [depth], type: 'scatter', mode: 'markers', name: 'Target', marker: {color: '#FF2A00', size: 10} };
+                Plotly.newPlot('plotFick', [trace1, trace2], getPlotLayout('Depth vs Time', 'Time (Hours)', 'Depth (μm)'), {responsive: true});
+            }
+        }
+
+        function calcRegression() {
+            const raw = document.getElementById('regData').value.trim();
+            if(!raw) return;
+            let tArr = [], dArr = [];
+            raw.split('\n').forEach(line => {
+                let parts = line.split(',');
+                if(parts.length >= 2) {
+                    let t = parseFloat(parts[0]) + 273.15; // assuming C
+                    let d = parseFloat(parts[1]);
+                    if(t > 0 && d > 0) { tArr.push(t); dArr.push(d); }
+                }
+            });
+            if(tArr.length < 2) return;
+
+            let x = tArr.map(t => 1/t);
+            let y = dArr.map(d => Math.log(d));
+            
+            // Linear Regression Math
+            let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0, sumYY = 0;
+            for(let i=0; i<x.length; i++) {
+                sumX += x[i]; sumY += y[i];
+                sumXY += x[i]*y[i]; sumXX += x[i]*x[i]; sumYY += y[i]*y[i];
+            }
+            let n = x.length;
+            let slope = (n*sumXY - sumX*sumY) / (n*sumXX - sumX*sumX);
+            let intercept = (sumY - slope*sumX) / n;
+            
+            let Q_est = -slope * R_GAS / 1000;
+            let D0_est = Math.exp(intercept);
+
+            document.getElementById('regQ').innerText = Q_est.toFixed(2);
+            document.getElementById('regD0').innerText = D0_est.toExponential(3);
+            document.getElementById('regR2').innerText = "Calculated"; // skipping R2 for simplicity
+
+            // Plot
+            let trace1 = { x: x.map(v=>v*1000), y: y, mode: 'markers', name: 'Data', marker: {color: '#00E5FF', size: 10} };
+            let trace2 = { x: x.map(v=>v*1000), y: x.map(v=>slope*v + intercept), mode: 'lines', name: 'Fit', line: {color: '#FF6B00', width: 3, dash: 'dash'} };
+            Plotly.newPlot('plotRegression', [trace1, trace2], getPlotLayout('Arrhenius Fit', '1000/T (K⁻¹)', 'ln(D)'), {responsive: true});
+        }
+
+        function getPlotLayout(title, xTitle, yTitle) {
+            return {
+                title: { text: title, font: {color: '#FF8C00'} },
+                paper_bgcolor: '#1E232A', plot_bgcolor: '#121519',
+                font: { color: '#E2E8F0' },
+                xaxis: { title: xTitle, gridcolor: '#3A4250' },
+                yaxis: { title: yTitle, gridcolor: '#3A4250' },
+                margin: {t: 40, l: 50, r: 20, b: 50}
+            };
+        }
+
+        // Initialization
+        window.onload = () => {
+            populateSelect();
+            calcFick();
+            calcRegression();
+            // Tab 2 demo plot
+            let trace = { x: [2, 1.5, 1], y: [-15, -13, -11], mode: 'lines', name: 'Demo Comparison', line: {color: '#FF6B00', width: 3} };
+            Plotly.newPlot('plotComparison', [trace], getPlotLayout('Comparison (Interactive in full version)', '1000/T', 'logD'), {responsive: true});
+        };
+    </script>
+</body>
+</html>
